@@ -1,17 +1,11 @@
 package ketama
 
 import (
-	"bufio"
 	"crypto/md5"
 	"errors"
 	"fmt"
-	"io"
 	"math"
-	"net"
-	"os"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -22,13 +16,13 @@ var (
 
 type mcs struct {
 	point uint
-	addr  net.Addr
+	addr  interface{}
 }
 
 type mcsArray []mcs
 
 type ServerInfo struct {
-	Addr   net.Addr
+	Addr   interface{}
 	Memory uint64
 }
 
@@ -43,65 +37,10 @@ func (s mcsArray) Len() int           { return len(s) }
 func (s mcsArray) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s mcsArray) Sort()              { sort.Sort(s) }
 
-// Should be "servername:port,memory"
-func readServerDefinitions(filename string) (ss []ServerInfo, err error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	reader := bufio.NewReader(file)
-	ss = make([]ServerInfo, 0)
-
-	for {
-		data, _, err := reader.ReadLine()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		line := string(data)
-		if strings.HasPrefix(line, "#") {
-			continue
-		}
-		addr, mem, err := getServerAddr(line)
-		if err != nil {
-			return nil, err
-		}
-
-		s := ServerInfo{
-			Addr:   addr,
-			Memory: mem,
-		}
-		ss = append(ss, s)
-	}
-	return ss, nil
-}
-
 func md5Digest(in []byte) []byte {
 	h := md5.New()
 	h.Write(in)
 	return h.Sum(nil)
-}
-
-func getServerAddr(line string) (addr net.Addr, mem uint64, err error) {
-	record := strings.Split(string(line), "\t")
-	if len(record) != 2 {
-		return nil, 0, ErrMalformedServer
-	}
-	mem, err = strconv.ParseUint(record[1], 10, 0)
-	if err != nil {
-		return nil, 0, ErrMalformedServer
-	}
-	addr, err = ServerAddr(record[0])
-	return addr, mem, err
-}
-
-func ServerAddr(addr string) (net.Addr, error) {
-	if strings.Contains(addr, "/") {
-		return net.ResolveUnixAddr("unix", addr)
-	} else {
-		return net.ResolveTCPAddr("tcp", addr)
-	}
 }
 
 func GetHash(in string) uint {
@@ -110,20 +49,6 @@ func GetHash(in string) uint {
 		(uint(digest[2]) << 16) |
 		(uint(digest[1]) << 8) |
 		uint(digest[0]))
-}
-
-func NewFromFile(filename string) (*Continuum, error) {
-	fileInfo, err := os.Stat(filename)
-	if err != nil {
-		return nil, err
-	}
-	serverList, err := readServerDefinitions(filename)
-	if err != nil {
-		return nil, err
-	}
-	continuum := New(serverList)
-	continuum.modtime = fileInfo.ModTime()
-	return continuum, nil
 }
 
 func New(serverList []ServerInfo) *Continuum {
@@ -148,7 +73,7 @@ func New(serverList []ServerInfo) *Continuum {
 		ks := int(math.Floor(pct * 40.0 * float64(numServers)))
 
 		for k := 0; k < ks; k++ {
-			ss := fmt.Sprintf("ketama: %s-%s", server.Addr.String(), k)
+			ss := fmt.Sprintf("ketama: %s-%s", server.Addr, k)
 			digest := md5Digest([]byte(ss))
 
 			for h := 0; h < 4; h++ {
@@ -168,7 +93,7 @@ func New(serverList []ServerInfo) *Continuum {
 	return continuum
 }
 
-func (cont *Continuum) PickServer(key string) net.Addr {
+func (cont *Continuum) PickServer(key string) interface{} {
 
 	if len(cont.array) == 0 {
 		panic(ErrNoServers)
